@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/yaroslavst777/Calculator/internal/application"
+	"github.com/yaroslavst777/calculator/internal/application"
 )
 
 func main() {
