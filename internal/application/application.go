@@ -1,4 +1,4 @@
-package main
+package application
 
 import (
 	"encoding/json"
@@ -6,16 +6,44 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"unicode"
 )
 
-/*
-1. Мы определяем структуру `RequestData`, которая описывает данные, ожидаемые в JSON-формате.
-2. Создаем обработчик `calculateHandler`, который обрабатывает POST-запросы. Он проверяет метод запроса, декодирует JSON из тела запроса и выполняет некоторую логику обработки.
-3. Используем `http.HandleFunc` для связывания URL-адреса `/api/v1/calculate` с нашим обработчиком.
-4. Запускаем HTTP-сервер на порту 8080.
-*/
+type Config struct {
+	Addr string
+}
+
+func ConfigFromEnv() *Config {
+	config := new(Config)
+	config.Addr = os.Getenv("PORT")
+	if config.Addr == "" {
+		config.Addr = "8080"
+	}
+	return config
+}
+
+type Application struct {
+	config *Config
+}
+
+func New() *Application {
+	return &Application{
+		config: ConfigFromEnv(),
+	}
+}
+
+// Функция запуска сервера
+func (a *Application) RunServer() error {
+	http.HandleFunc("/api/v1/calculate", CalcHandler)
+	return http.ListenAndServe(":"+a.config.Addr, nil)
+}
+
+type Request struct {
+	Expression string `json:"expression"`
+}
+
 type RequestData struct {
 	Expression string `json:"expression"`
 }
@@ -200,9 +228,4 @@ func CalcHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Отправка JSON-ответа
 	makeResponse(w, http.StatusOK, answer)
-}
-
-func main() {
-	http.Handle("/api/v1/calculate", http.HandlerFunc(CalcHandler))
-	http.ListenAndServe(":8080", nil)
 }
