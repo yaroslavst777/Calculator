@@ -2,13 +2,12 @@ package application
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/yaroslavst777/calculator/pkg/calculation"
 	"io"
+	"log"
 	"net/http"
 	"os"
-	"strconv"
-	"unicode"
 )
 
 type Config struct {
@@ -46,120 +45,6 @@ type Request struct {
 
 type RequestData struct {
 	Expression string `json:"expression"`
-}
-
-func Calc(expression string) (float64, error) {
-	var operators []rune
-	var operands []float64
-
-	priority := func(op rune) int {
-		if op == '*' || op == '/' {
-			return 2
-		} else if op == '+' || op == '-' {
-			return 1
-		}
-		return 0
-	}
-
-	calculate := func() error {
-		if len(operators) == 0 {
-			return errors.New("invalid expression")
-		}
-
-		op := operators[len(operators)-1]
-		operators = operators[:len(operators)-1]
-
-		if len(operands) < 2 {
-			return errors.New("invalid expression")
-		}
-
-		b := operands[len(operands)-1]
-		operands = operands[:len(operands)-1]
-		a := operands[len(operands)-1]
-		operands = operands[:len(operands)-1]
-
-		var result float64
-		switch op {
-		case '+':
-			result = a + b
-		case '-':
-			result = a - b
-		case '*':
-			result = a * b
-		case '/':
-			if b == 0 {
-				return errors.New("division by zero")
-			}
-			result = a / b
-		default:
-			return errors.New("invalid operator")
-		}
-
-		operands = append(operands, result)
-		return nil
-	}
-
-	var numStr string
-	for _, char := range expression {
-		if unicode.IsSpace(char) {
-			continue
-		}
-		if unicode.IsDigit(char) || char == '.' {
-			numStr += string(char)
-		} else {
-			if numStr != "" {
-				num, err := strconv.ParseFloat(numStr, 64)
-				if err != nil {
-					return 0, fmt.Errorf("invalid number: %s", numStr)
-				}
-				operands = append(operands, num)
-				numStr = ""
-			}
-
-			if char == '+' || char == '-' || char == '*' || char == '/' {
-				for len(operators) > 0 && priority(operators[len(operators)-1]) >= priority(char) {
-					if err := calculate(); err != nil {
-						return 0, err
-					}
-				}
-				operators = append(operators, char)
-			} else if char == '(' {
-				operators = append(operators, char)
-			} else if char == ')' {
-				for len(operators) > 0 && operators[len(operators)-1] != '(' {
-					if err := calculate(); err != nil {
-						return 0, err
-					}
-				}
-				if len(operators) == 0 || operators[len(operators)-1] != '(' {
-					return 0, errors.New("mismatched parentheses")
-				}
-				operators = operators[:len(operators)-1]
-			} else {
-				return 0, fmt.Errorf("invalid character: %c", char)
-			}
-		}
-	}
-
-	if numStr != "" {
-		num, err := strconv.ParseFloat(numStr, 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid number: %s", numStr)
-		}
-		operands = append(operands, num)
-	}
-
-	for len(operators) > 0 {
-		if err := calculate(); err != nil {
-			return 0, err
-		}
-	}
-
-	if len(operands) != 1 {
-		return 0, errors.New("invalid expression")
-	}
-
-	return operands[0], nil
 }
 
 func makeResponse(w http.ResponseWriter, statusCode int, answer float64) {
@@ -201,8 +86,8 @@ func CalcHandler(w http.ResponseWriter, r *http.Request) {
 
 	var requestData RequestData
 
-	data := make([]byte, 1024)        // Создадим буфер для чтения данных в него
-	num, errRead := r.Body.Read(data) // Прочитаем данные в буфер
+	data := make([]byte, 1024)
+	num, errRead := r.Body.Read(data)
 	defer r.Body.Close()
 	if errRead != nil && errRead != io.EOF {
 		makeResponse(w, http.StatusInternalServerError, 0)
@@ -220,7 +105,7 @@ func CalcHandler(w http.ResponseWriter, r *http.Request) {
 	// Получение значения expression из формы
 	expression := requestData.Expression
 
-	answer, errCalc := Calc(expression)
+	answer, errCalc := calculation.Calc(expression)
 	if errCalc != nil {
 		makeResponse(w, http.StatusUnprocessableEntity, 0)
 		return
@@ -228,4 +113,25 @@ func CalcHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Отправка JSON-ответа
 	makeResponse(w, http.StatusOK, answer)
+	fileName := "log.txt"
+	logMessage := fmt.Sprintf("expression = %s, answer = %.2f", expression, answer)
+	err := WriteToLogFile(logMessage, fileName)
+	if err != nil {
+		return
+	}
+}
+
+func WriteToLogFile(message string, fileName string) error {
+	// Открываем файл
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	// Закрываем файл после выхода из main
+	defer file.Close()
+	// Конфигурируем логгер, чтобы он выводил лог в файл
+	log.SetOutput(file)
+
+	log.Println(message)
+	return nil
 }
